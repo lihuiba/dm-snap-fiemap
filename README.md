@@ -12,3 +12,5 @@ Usage
 ===============
 
 As the same as that for ordinary files.
+
+See https://www.kernel.org/doc/Documentation/filesystems/fiemap.txt for reference.
