@@ -1724,7 +1724,7 @@ static int snapshot_ioctl(struct dm_target* ti, unsigned int cmd, unsigned long 
                         list_for_each_entry (e, slot, hash_list) {
                                 u64 offset = e->old_chunk << shift;
                                 u64 len = dm_consecutive_chunk_count(e) << shift;
-                                int err = fiemap_fill_next_extent(fieinfo, offset, offset, len, flags);
+                                int err = fiemap_fill_next_extent(&fieinfo, offset, offset, len, 0);
                                 if (err < 0)
                                         break;
                                 if (err == 1) {

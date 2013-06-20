@@ -1,4 +1,7 @@
-obj-m := dm-snap.o
+obj-m := dm-snapshot.o
+
+dm-snapshot-objs := dm-snap.o dm-exception-store.o dm-snap-transient.o \
+			dm-snap-persistent.o
 
 fakeall :
 	sh make.sh
