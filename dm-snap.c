@@ -1680,6 +1680,76 @@ out:
 	return r;
 }
 
+#define FIEMAP_MAX_EXTENTS	(UINT_MAX / sizeof(struct fiemap_extent))
+static int snapshot_ioctl(struct dm_target* ti, unsigned int cmd, unsigned long arg)
+{
+        struct fiemap fiemap;
+        struct fiemap __user *ufiemap = (struct fiemap __user *) arg;
+        struct fiemap_extent_info fieinfo = { 0, };
+
+        if (copy_from_user(&fiemap, ufiemap, sizeof(fiemap)))
+                return -EFAULT;
+
+        if (fiemap.fm_extent_count > FIEMAP_MAX_EXTENTS)
+                return -EINVAL;
+
+        if (fiemap.fm_length > ti->len || (ti->len - fiemap.fm_length)<fiemap.fm_start)
+                return -EINVAL;
+
+        if (fiemap.fm_extent_count != 0 &&
+            !access_ok(VERIFY_WRITE, ufiemap->fm_extents,
+                       fiemap.fm_extent_count * sizeof(struct fiemap_extent)))
+                return -EFAULT;
+
+        fieinfo.fi_flags = fiemap.fm_flags;
+        fieinfo.fi_extents_max = fiemap.fm_extent_count;
+        fieinfo.fi_extents_start = ufiemap->fm_extents;
+
+//      todo: sync before fiemap
+//      if (fieinfo.fi_flags & FIEMAP_FLAG_SYNC)
+//              filemap_write_and_wait(inode->i_mapping);
+
+
+        switch(cmd)
+        {
+        case FS_IOC_FIEMAP: {
+                struct dm_snapshot *s = ti->private;
+                unsigned shift = s->store->chunk_shift;
+//              unsigned chunk_size = s->store->chunk_size;
+                uint32_t i, ht_size = s->complete.hash_mask + 1;
+
+                for (i=0; i<ht_size; ++i) {
+                        struct dm_exception *e;
+                        struct list_head *slot = &s->complete.table[i];
+                        list_for_each_entry (e, slot, hash_list) {
+                                u64 offset = e->old_chunk << shift;
+                                u64 len = dm_consecutive_chunk_count(e) << shift;
+                                int err = fiemap_fill_next_extent(fieinfo, offset, offset, len, flags);
+                                if (err < 0)
+                                        break;
+                                if (err == 1) {
+                                        err = 0;
+                                        break;
+                                }
+                        }
+                }
+                break;
+	}
+
+        default:
+                return -EOPNOTSUPP;
+        }
+
+        fiemap.fm_flags = fieinfo.fi_flags;
+        fiemap.fm_mapped_extents = fieinfo.fi_extents_mapped;
+        if (copy_to_user(ufiemap, &fiemap, sizeof(fiemap)))
+                return -EFAULT;
+
+        return 0;
+}
+
+
+
 /*
  * A snapshot-merge target behaves like a combination of a snapshot
  * target and a snapshot-origin target.  It only generates new
@@ -2217,6 +2287,7 @@ static struct target_type snapshot_target = {
 	.resume  = snapshot_resume,
 	.status  = snapshot_status,
 	.iterate_devices = snapshot_iterate_devices,
+	.ioctl   = snapshot_ioctl,
 };
 
 static struct target_type merge_target = {
